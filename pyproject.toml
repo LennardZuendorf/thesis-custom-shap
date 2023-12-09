@@ -20,7 +20,7 @@ dependencies = [
   'packaging>20.9',
   'slicer==0.0.7',
   'numba',
-  'cloudpickle'
+  'cloudpickle',
   'logging'
 ]
 classifiers = [
