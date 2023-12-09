@@ -288,7 +288,7 @@ class PartitionExplainer(Explainer):
 
                 eval_count += len(batch_masks)
 
-                if pbar is None and time.time() - start_time > 5:
+                if pbar is None and time.time() - start_time > 8:
                     pbar = tqdm(total=total_evals, disable=silent, leave=False)
                     pbar.update(eval_count)
                 if pbar is not None:

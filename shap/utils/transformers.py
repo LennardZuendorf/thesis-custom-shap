@@ -1,4 +1,5 @@
 from ._general import safe_isinstance
+import logging
 
 MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM = [
         "transformers.T5ForConditionalGeneration",
@@ -86,8 +87,13 @@ SENTENCEPIECE_TOKENIZERS = [
 def is_transformers_lm(model):
     """ Check if the given model object is a huggingface transformers language model.
     """
-    return (safe_isinstance(model, "transformers.PreTrainedModel") or safe_isinstance(model, "transformers.TFPreTrainedModel")) and \
-        safe_isinstance(model, MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM + MODELS_FOR_CAUSAL_LM)
+
+    transformers_pretrained = safe_isinstance(model, "transformers.PreTrainedModel") or safe_isinstance(model, "transformers.TFPreTrainedModel")
+    transformers_lm = safe_isinstance(model, MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM + MODELS_FOR_CAUSAL_LM)
+
+    logging.log(logging.DEBUG, f"transformers_pretrained: {transformers_pretrained}, transformers_lm: {transformers_lm}")
+
+    return transformers_pretrained and transformers_lm
 
 def parse_prefix_suffix_for_tokenizer(tokenizer):
     """ Set prefix and suffix tokens based on null tokens.
