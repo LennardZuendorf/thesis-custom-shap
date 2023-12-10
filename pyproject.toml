@@ -21,7 +21,7 @@ dependencies = [
   'slicer==0.0.7',
   'numba',
   'cloudpickle',
-  'logging'
+  'loguru'
 ]
 classifiers = [
   "Operating System :: Microsoft :: Windows",

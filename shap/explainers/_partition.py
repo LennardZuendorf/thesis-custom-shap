@@ -4,6 +4,7 @@ import time
 import numpy as np
 from numba import njit
 from tqdm.auto import tqdm
+from loguru import logger
 
 from .. import Explanation, links
 from ..models import Model
@@ -131,6 +132,8 @@ class PartitionExplainer(Explainer):
         """ Explains a single row and returns the tuple (row_values, row_expected_values, row_mask_shapes).
         """
 
+        logger.debug(f"Running explain_row with {outputs}")
+
         if fixed_context == "auto":
             # if isinstance(self.masker, maskers.Text):
             #     fixed_context = 1 # we err on the side of speed for text models
@@ -237,6 +240,7 @@ class PartitionExplainer(Explainer):
 
             # if we passed our execution limit then leave everything else on the internal nodes
             if eval_count >= max_evals:
+                logger.debug(f"Stopped early because {eval_count} >= {max_evals}")
                 while not q.empty():
                     m00, f00, f11, ind, weight = q.get()[2]
                     self.dvalues[ind] += (f11 - f00) * weight
@@ -329,327 +333,13 @@ class PartitionExplainer(Explainer):
                     args = (m10, f10, f11, rind, new_weight)
                     q.put((-np.max(np.abs(f11 - f10)) * new_weight, np.random.randn(), args))
 
+        logger.debug(f"Stopped with {eval_count} evals because queue is empty ({str(q)})")
         if pbar is not None:
             pbar.close()
 
         self.last_eval_count = eval_count
 
         return output_indexes, base_value
-
-    def owen3(self, fm, f00, f11, max_evals, output_indexes, fixed_context, batch_size, silent):
-        """ Compute a nested set of recursive Owen values based on an ordering recursion.
-        """
-
-        #f = self._reshaped_model
-        #r = self.masker
-        #masks = np.zeros(2*len(inds)+1, dtype=int)
-        M = len(fm)
-        m00 = np.zeros(M, dtype=bool)
-        #f00 = fm(m00.reshape(1,-1))[0]
-        base_value = f00
-        #f11 = fm(~m00.reshape(1,-1))[0]
-        #f11 = self._reshaped_model(r(~m00, x)).mean(0)
-        ind = len(self.dvalues)-1
-
-        # make sure output_indexes is a list of indexes
-        if output_indexes is not None:
-            # assert self.multi_output, "output_indexes is only valid for multi-output models!"
-            # inds = output_indexes.apply(f11, 0)
-            # out_len = output_indexes_len(output_indexes)
-            # if output_indexes.startswith("max("):
-            #     output_indexes = np.argsort(-f11)[:out_len]
-            # elif output_indexes.startswith("min("):
-            #     output_indexes = np.argsort(f11)[:out_len]
-            # elif output_indexes.startswith("max(abs("):
-            #     output_indexes = np.argsort(np.abs(f11))[:out_len]
-
-            f00 = f00[output_indexes]
-            f11 = f11[output_indexes]
-
-        # our starting plan is to evaluate all the nodes with a fixed_context
-        evals_planned = M
-
-        q = queue.PriorityQueue()
-        q.put((0, 0, (m00, f00, f11, ind, 1.0, fixed_context))) # (m00, f00, f11, tree_index, weight)
-        eval_count = 0
-        total_evals = min(max_evals, (M-1)*M) # TODO: (M-1)*M is only right for balanced clusterings, but this is just for plotting progress...
-        pbar = None
-        start_time = time.time()
-        while not q.empty():
-
-            # if we passed our execution limit then leave everything else on the internal nodes
-            if eval_count >= max_evals:
-                while not q.empty():
-                    m00, f00, f11, ind, weight, _ = q.get()[2]
-                    self.dvalues[ind] += (f11 - f00) * weight
-                break
-
-            # create a batch of work to do
-            batch_args = []
-            batch_masks = []
-            while not q.empty() and len(batch_masks) < batch_size and eval_count < max_evals:
-
-                # get our next set of arguments
-                m00, f00, f11, ind, weight, context = q.get()[2]
-
-                # get the left and right children of this cluster
-                lind = int(self._clustering[ind-M, 0]) if ind >= M else -1
-                rind = int(self._clustering[ind-M, 1]) if ind >= M else -1
-
-                # get the distance of this cluster's children
-                if ind < M:
-                    distance = -1
-                else:
-                    distance = self._clustering[ind-M, 2]
-
-                # check if we are a leaf node (or other negative distance cluster) and so should terminate our decent
-                if distance < 0:
-                    self.dvalues[ind] += (f11 - f00) * weight
-                    continue
-
-                # build the masks
-                m10 = m00.copy() # we separate the copy from the add so as to not get converted to a matrix
-                m10[:] += self._mask_matrix[lind, :]
-                m01 = m00.copy()
-                m01[:] += self._mask_matrix[rind, :]
-
-                batch_args.append((m00, m10, m01, f00, f11, ind, lind, rind, weight, context))
-                batch_masks.append(m10)
-                batch_masks.append(m01)
-
-            batch_masks = np.array(batch_masks)
-
-            # run the batch
-            if len(batch_args) > 0:
-                fout = fm(batch_masks)
-                if output_indexes is not None:
-                    fout = fout[:,output_indexes]
-
-                eval_count += len(batch_masks)
-
-                if pbar is None and time.time() - start_time > 8:
-                    pbar = tqdm(total=total_evals, disable=silent, leave=False)
-                    pbar.update(eval_count)
-                if pbar is not None:
-                    pbar.update(len(batch_masks))
-
-            # use the results of the batch to add new nodes
-            for i in range(len(batch_args)):
-
-                m00, m10, m01, f00, f11, ind, lind, rind, weight, context = batch_args[i]
-
-                # get the the number of leaves in this cluster
-                if ind < M:
-                    num_leaves = 0
-                else:
-                    num_leaves = self._clustering[ind-M, 3]
-
-                # get the evaluated model output on the two new masked inputs
-                f10 = fout[2*i]
-                f01 = fout[2*i+1]
-
-                # see if we have enough evaluations left to get both sides of a fixed context
-                if max_evals - evals_planned > num_leaves:
-                    evals_planned += num_leaves
-                    ignore_context = True
-                else:
-                    ignore_context = False
-
-                new_weight = weight
-                if context is None or ignore_context:
-                    new_weight /= 2
-
-                if context is None or context == 0 or ignore_context:
-                    self.dvalues[ind] += (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-
-                    # recurse on the left node with zero context, flip the context for all descendents if we are ignoring it
-                    args = (m00, f00, f10, lind, new_weight, 0 if context == 1 else context)
-                    q.put((-np.max(np.abs(f10 - f00)) * new_weight, np.random.randn(), args))
-
-                    # recurse on the right node with zero context, flip the context for all descendents if we are ignoring it
-                    args = (m00, f00, f01, rind, new_weight, 0 if context == 1 else context)
-                    q.put((-np.max(np.abs(f01 - f00)) * new_weight, np.random.randn(), args))
-
-                if context is None or context == 1 or ignore_context:
-                    self.dvalues[ind] -= (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-
-                    # recurse on the left node with one context, flip the context for all descendents if we are ignoring it
-                    args = (m01, f01, f11, lind, new_weight, 1 if context == 0 else context)
-                    q.put((-np.max(np.abs(f11 - f01)) * new_weight, np.random.randn(), args))
-
-                    # recurse on the right node with one context, flip the context for all descendents if we are ignoring it
-                    args = (m10, f10, f11, rind, new_weight, 1 if context == 0 else context)
-                    q.put((-np.max(np.abs(f11 - f10)) * new_weight, np.random.randn(), args))
-
-        if pbar is not None:
-            pbar.close()
-
-        self.last_eval_count = eval_count
-
-        return output_indexes, base_value
-
-
-
-    # def owen2(self, fm, f00, f11, max_evals, output_indexes, fixed_context, batch_size, silent):
-    #     """ Compute a nested set of recursive Owen values based on an ordering recursion.
-    #     """
-
-    #     #f = self._reshaped_model
-    #     #r = self.masker
-    #     #masks = np.zeros(2*len(inds)+1, dtype=int)
-    #     M = len(fm)
-    #     m00 = np.zeros(M, dtype=bool)
-    #     #f00 = fm(m00.reshape(1,-1))[0]
-    #     base_value = f00
-    #     #f11 = fm(~m00.reshape(1,-1))[0]
-    #     #f11 = self._reshaped_model(r(~m00, x)).mean(0)
-    #     ind = len(self.dvalues)-1
-
-    #     # make sure output_indexes is a list of indexes
-    #     if output_indexes is not None:
-    #         # assert self.multi_output, "output_indexes is only valid for multi-output models!"
-    #         # inds = output_indexes.apply(f11, 0)
-    #         # out_len = output_indexes_len(output_indexes)
-    #         # if output_indexes.startswith("max("):
-    #         #     output_indexes = np.argsort(-f11)[:out_len]
-    #         # elif output_indexes.startswith("min("):
-    #         #     output_indexes = np.argsort(f11)[:out_len]
-    #         # elif output_indexes.startswith("max(abs("):
-    #         #     output_indexes = np.argsort(np.abs(f11))[:out_len]
-
-    #         f00 = f00[output_indexes]
-    #         f11 = f11[output_indexes]
-
-    #     fc_owen(m00, m11, 1)
-    #     fc_owen(m00, m11, 0)
-
-    #     def fc_owen(m00, m11, context):
-
-    #         # recurse on the left node with zero context
-    #         args = (m00, f00, f10, lind, new_weight)
-    #         q.put((-np.max(np.abs(f10 - f00)) * new_weight, np.random.randn(), args))
-
-    #         # recurse on the right node with zero context
-    #         args = (m00, f00, f01, rind, new_weight)
-    #         q.put((-np.max(np.abs(f01 - f00)) * new_weight, np.random.randn(), args))
-    #         fc_owen(m00, m11, 1)
-    #     m00 m11
-    #     owen(fc=1)
-    #     owen(fc=0)
-
-    #     q = queue.PriorityQueue()
-    #     q.put((0, 0, (m00, f00, f11, ind, 1.0, 1)))
-    #     eval_count = 0
-    #     total_evals = min(max_evals, (M-1)*M) # TODO: (M-1)*M is only right for balanced clusterings, but this is just for plotting progress...
-    #     pbar = None
-    #     start_time = time.time()
-    #     while not q.empty():
-
-    #         # if we passed our execution limit then leave everything else on the internal nodes
-    #         if eval_count >= max_evals:
-    #             while not q.empty():
-    #                 m00, f00, f11, ind, weight, _ = q.get()[2]
-    #                 self.dvalues[ind] += (f11 - f00) * weight
-    #             break
-
-    #         # create a batch of work to do
-    #         batch_args = []
-    #         batch_masks = []
-    #         while not q.empty() and len(batch_masks) < batch_size and eval_count < max_evals:
-
-    #             # get our next set of arguments
-    #             m00, f00, f11, ind, weight, context = q.get()[2]
-
-    #             # get the left and right children of this cluster
-    #             lind = int(self._clustering[ind-M, 0]) if ind >= M else -1
-    #             rind = int(self._clustering[ind-M, 1]) if ind >= M else -1
-
-    #             # get the distance of this cluster's children
-    #             if ind < M:
-    #                 distance = -1
-    #             else:
-    #                 if self._clustering.shape[1] >= 3:
-    #                     distance = self._clustering[ind-M, 2]
-    #                 else:
-    #                     distance = 1
-
-    #             # check if we are a leaf node (or other negative distance cluster) and so should terminate our decent
-    #             if distance < 0:
-    #                 self.dvalues[ind] += (f11 - f00) * weight
-    #                 continue
-
-    #             # build the masks
-    #             m10 = m00.copy() # we separate the copy from the add so as to not get converted to a matrix
-    #             m10[:] += self._mask_matrix[lind, :]
-    #             m01 = m00.copy()
-    #             m01[:] += self._mask_matrix[rind, :]
-
-    #             batch_args.append((m00, m10, m01, f00, f11, ind, lind, rind, weight, context))
-    #             batch_masks.append(m10)
-    #             batch_masks.append(m01)
-
-    #         batch_masks = np.array(batch_masks)
-
-    #         # run the batch
-    #         if len(batch_args) > 0:
-    #             fout = fm(batch_masks)
-    #             if output_indexes is not None:
-    #                 fout = fout[:,output_indexes]
-
-    #             eval_count += len(batch_masks)
-
-    #             if pbar is None and time.time() - start_time > 5:
-    #                 pbar = tqdm(total=total_evals, disable=silent, leave=False)
-    #                 pbar.update(eval_count)
-    #             if pbar is not None:
-    #                 pbar.update(len(batch_masks))
-
-    #         # use the results of the batch to add new nodes
-    #         for i in range(len(batch_args)):
-
-    #             m00, m10, m01, f00, f11, ind, lind, rind, weight, context = batch_args[i]
-
-    #             # get the evaluated model output on the two new masked inputs
-    #             f10 = fout[2*i]
-    #             f01 = fout[2*i+1]
-
-    #             new_weight = weight
-    #             if fixed_context is None:
-    #                 new_weight /= 2
-    #             elif fixed_context == 0:
-    #                 self.dvalues[ind] += (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-    #             elif fixed_context == 1:
-    #                 self.dvalues[ind] -= (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-
-    #             if fixed_context is None or fixed_context == 0:
-    #                 self.dvalues[ind] += (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-
-
-    #                 # recurse on the left node with zero context
-    #                 args = (m00, f00, f10, lind, new_weight)
-    #                 q.put((-np.max(np.abs(f10 - f00)) * new_weight, np.random.randn(), args))
-
-    #                 # recurse on the right node with zero context
-    #                 args = (m00, f00, f01, rind, new_weight)
-    #                 q.put((-np.max(np.abs(f01 - f00)) * new_weight, np.random.randn(), args))
-
-    #             if fixed_context is None or fixed_context == 1:
-    #                 self.dvalues[ind] -= (f11 - f10 - f01 + f00) * weight # leave the interaction effect on the internal node
-
-
-    #                 # recurse on the left node with one context
-    #                 args = (m01, f01, f11, lind, new_weight)
-    #                 q.put((-np.max(np.abs(f11 - f01)) * new_weight, np.random.randn(), args))
-
-    #                 # recurse on the right node with one context
-    #                 args = (m10, f10, f11, rind, new_weight)
-    #                 q.put((-np.max(np.abs(f11 - f10)) * new_weight, np.random.randn(), args))
-
-    #     if pbar is not None:
-    #         pbar.close()
-
-    #     return output_indexes, base_value
-
 
 def output_indexes_len(output_indexes):
     if output_indexes.startswith("max("):
