@@ -233,7 +233,8 @@ class PartitionExplainer(Explainer):
         q = queue.PriorityQueue()
         q.put((0, 0, (m00, f00, f11, ind, 1.0)))
         eval_count = 0
-        total_evals = min(max_evals, (M-1)*M) # TODO: (M-1)*M is only right for balanced clusterings, but this is just for plotting progress...
+        total_evals = min(max_evals, (M-1)*M)
+        logger.debug(f"Running Owen with {total_evals} evals, queue size is {q.qsize()}, eval_count is {eval_count}")
         pbar = None
         start_time = time.time()
         while not q.empty():
@@ -300,6 +301,7 @@ class PartitionExplainer(Explainer):
 
             # use the results of the batch to add new nodes
             for i in range(len(batch_args)):
+                logger(f"Should be adding new nodes, {i} of {len(batch_args)}")
 
                 m00, m10, m01, f00, f11, ind, lind, rind, weight = batch_args[i]
 
@@ -332,6 +334,8 @@ class PartitionExplainer(Explainer):
                     # recurse on the right node with one context
                     args = (m10, f10, f11, rind, new_weight)
                     q.put((-np.max(np.abs(f11 - f10)) * new_weight, np.random.randn(), args))
+
+                logger(f"Should have added adding new nodes, queue size is {q.qsize()}")
 
         logger.debug(f"Stopped with {eval_count} evals because queue is empty ({str(q)})")
         if pbar is not None:
