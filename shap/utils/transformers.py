@@ -85,7 +85,7 @@ SENTENCEPIECE_TOKENIZERS = [
 ]
 
 def is_transformers_lm(model):
-    """ Check if the given model object is a huggingface transformers language model.
+    """ Check if the given model object is a huggingface transformers language model. Includes both causal and masked LMs and logging.
     """
     transformers_pretrained = safe_isinstance(model, "transformers.PreTrainedModel") or safe_isinstance(model, "transformers.TFPreTrainedModel")
     transformers_lm = safe_isinstance(model, MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM + MODELS_FOR_CAUSAL_LM)
