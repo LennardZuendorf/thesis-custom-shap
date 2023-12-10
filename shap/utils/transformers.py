@@ -90,7 +90,10 @@ def is_transformers_lm(model):
     transformers_pretrained = safe_isinstance(model, "transformers.PreTrainedModel") or safe_isinstance(model, "transformers.TFPreTrainedModel")
     transformers_lm = safe_isinstance(model, MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM + MODELS_FOR_CAUSAL_LM)
 
-    logger.debug(f"model: {model}, transformers_pretrained: {transformers_pretrained}, transformers_lm: {transformers_lm}")
+    if transformers_pretrained == False and transformers_lm == False:
+        logger.debug(f"Model is not a transformers language model: {model}")
+    else:
+        logger.debug(f"Model is not a transformers language model.")
 
     return transformers_pretrained and transformers_lm
 
