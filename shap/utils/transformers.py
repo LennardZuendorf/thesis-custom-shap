@@ -91,9 +91,9 @@ def is_transformers_lm(model):
     transformers_lm = safe_isinstance(model, MODELS_FOR_SEQ_TO_SEQ_CAUSAL_LM + MODELS_FOR_CAUSAL_LM)
 
     if transformers_pretrained == False and transformers_lm == False:
-        logger.debug(f"Model is not a transformers language model: {model}")
+        logger.debug(f"Model is not a transformers language model: {type(model)}")
     else:
-        logger.debug(f"Model is not a transformers language model.")
+        logger.debug(f"Model has been detected as a transformers model: ({type(model)})")
 
     return transformers_pretrained and transformers_lm
 
