@@ -64,6 +64,7 @@ class PartitionExplainer(Explainer):
         super().__init__(model, masker, link=link, linearize_link=linearize_link, algorithm="partition", \
                          output_names = output_names, feature_names=feature_names)
 
+        logger.debug("Initalized PartitionSHAP Explainer class.")
         # convert dataframes
         # if isinstance(masker, pd.DataFrame):
         #     masker = TabularMasker(masker)
@@ -123,6 +124,7 @@ class PartitionExplainer(Explainer):
                  outputs=None, silent=False):
         """ Explain the output of the model on the given arguments.
         """
+        logger.debug("Called PartitionSHAP Explainer.")
         return super().__call__(
             *args, max_evals=max_evals, fixed_context=fixed_context, main_effects=main_effects, error_bounds=error_bounds, batch_size=batch_size,
             outputs=outputs, silent=silent
@@ -334,8 +336,6 @@ class PartitionExplainer(Explainer):
                     # recurse on the right node with one context
                     args = (m10, f10, f11, rind, new_weight)
                     q.put((-np.max(np.abs(f11 - f10)) * new_weight, np.random.randn(), args))
-
-                logger.debug(f"Should have added adding new nodes, queue size is {q.qsize()}")
 
         logger.debug(f"Stopped with {eval_count} evals because queue is empty ({str(q)})")
         if pbar is not None:
