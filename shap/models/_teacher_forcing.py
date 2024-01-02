@@ -7,7 +7,7 @@ from ..utils import safe_isinstance
 from ..utils.transformers import getattr_silent, parse_prefix_suffix_for_tokenizer
 from ._model import Model
 
-from logguru import logger
+from loguru import logger
 
 class TeacherForcing(Model):
     """ Generates scores (log odds) for output text explanation algorithms using Teacher Forcing technique.

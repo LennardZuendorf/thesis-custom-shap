@@ -3,7 +3,7 @@ import copy
 import numpy as np
 import scipy.sparse
 from numba import njit
-from logguru import logger
+from loguru import logger
 
 from .. import links
 
