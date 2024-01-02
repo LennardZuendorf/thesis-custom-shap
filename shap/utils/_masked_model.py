@@ -72,7 +72,7 @@ class MaskedModel:
             return self._full_masking_call(masks, batch_size=batch_size)
 
     def _full_masking_call(self, masks, zero_index=None, batch_size=None):
-        logger.debug(f"Did a full masking call with a mask of shape {masks.shape()}.")
+        logger.debug(f"Did a full masking call with a mask of len {masks[0].len()}.")
         
         if batch_size is None:
             batch_size = len(masks)
