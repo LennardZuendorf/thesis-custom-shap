@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import scipy.sparse
 from numba import njit
+from logguru import logger
 
 from .. import links
 
@@ -19,6 +20,8 @@ class MaskedModel:
     delta_mask_noop_value = 2147483647 # used to encode a noop for delta masking
 
     def __init__(self, model, masker, link, linearize_link, *args):
+        logger.debug(f"Instantiated a masked model.")
+        
         self.model = model
         self.masker = masker
         self.link = link
@@ -69,7 +72,8 @@ class MaskedModel:
             return self._full_masking_call(masks, batch_size=batch_size)
 
     def _full_masking_call(self, masks, zero_index=None, batch_size=None):
-
+        logger.debug(f"Did a full masking call with{masks}") 
+        
         if batch_size is None:
             batch_size = len(masks)
         do_delta_masking = getattr(self.masker, "reset_delta_masking", None) is not None
