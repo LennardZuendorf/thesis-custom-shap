@@ -47,6 +47,8 @@ class TeacherForcing(Model):
         """
         super().__init__(model)
 
+        logger.debug("Initalized a TecherForcing Model.")
+
         self.tokenizer = tokenizer
         # set pad token if not defined
         if self.tokenizer is not None and getattr_silent(self.tokenizer, "pad_token") is None:
