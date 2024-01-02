@@ -134,7 +134,7 @@ class PartitionExplainer(Explainer):
         """ Explains a single row and returns the tuple (row_values, row_expected_values, row_mask_shapes).
         """
 
-        logger.debug(f"Running explain_row with {outputs}")
+        logger.debug(f"Running explain_row with {outputs} of type {type(outputs)}")
 
         if fixed_context == "auto":
             # if isinstance(self.masker, maskers.Text):
@@ -205,6 +205,8 @@ class PartitionExplainer(Explainer):
     def owen(self, fm, f00, f11, max_evals, output_indexes, fixed_context, batch_size, silent):
         """ Compute a nested set of recursive Owen values based on an ordering recursion.
         """
+
+        logger.debug(f"Starting owen value calculation on base value {f00} and current value {f11} with output values {output_indexes}.")
 
         #f = self._reshaped_model
         #r = self.masker
