@@ -7,6 +7,7 @@ from ..utils import safe_isinstance
 from ..utils.transformers import getattr_silent, parse_prefix_suffix_for_tokenizer
 from ._model import Model
 
+from logguru import logger
 
 class TeacherForcing(Model):
     """ Generates scores (log odds) for output text explanation algorithms using Teacher Forcing technique.
@@ -89,6 +90,7 @@ class TeacherForcing(Model):
             self.similarity_model_type = "tf"
 
     def __call__(self, X, Y):
+        logger.debug("Called Teacher Forcing Model to compute long odds")
         """ Computes log odds scores of generating output(text) for a given batch of input(text/image) .
 
         Parameters
@@ -118,6 +120,8 @@ class TeacherForcing(Model):
             else:
                 output_batch = np.concatenate((output_batch, logodds))
             start_batch_idx += self.batch_size
+
+        logger.debug(f"Calculated log odds: {output_batch}")
         return output_batch
 
     def update_output_names(self, output):
